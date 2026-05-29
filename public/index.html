@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IQTalk Mesh - P2P Voice & Lobby Rooms</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Socket.io Client (Full External CDN) -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .audio-bar {
+      transition: height 0.05s ease;
+    }
+    /* Hide scrollbars for a clean look */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans relative overflow-x-hidden">
+
+  <!-- 1. NAME ENTRY SCREEN (MODAL OVERLAY) -->
+  <div id="auth-overlay" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl max-w-md w-full text-center space-y-6">
+      <div class="inline-flex bg-indigo-600/10 p-4 rounded-full text-indigo-400 border border-indigo-500/20 mb-2">
+        <i data-lucide="radio" class="w-10 h-10 animate-pulse"></i>
+      </div>
+      <div class="space-y-2">
+        <h1 class="text-2xl font-bold text-white tracking-tight">Welcome to IQTalk Mesh</h1>
+        <p class="text-sm text-slate-400">Please enter your display name to enter the voice workspace.</p>
+      </div>
+
+      <div class="space-y-4">
+        <div class="text-left">
+          <label class="block text-xs text-slate-400 mb-1.5 font-medium">Your Name</label>
+          <input type="text" id="auth-username-input" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition" placeholder="e.g. Alex, Sarah, Designer">
+        </div>
+        <button id="auth-enter-btn" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-3 rounded-xl transition shadow-lg shadow-indigo-600/20 flex items-center justify-center gap-2">
+          Enter Workspace <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. MAIN APPLICATION LAYER (HIDDEN UNTIL LOGIN) -->
+  <div id="app-container" class="hidden flex-1 flex flex-col">
+    <!-- Header -->
+    <header class="border-b border-slate-850 bg-slate-900/50 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+      <div class="flex items-center gap-3">
+        <div class="bg-indigo-600 p-2 rounded-lg text-white">
+          <i data-lucide="mic" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+            IQTalk Mesh <span class="text-[10px] bg-indigo-500/10 text-indigo-400 px-2.5 py-0.5 rounded-full border border-indigo-500/20 font-semibold tracking-wider uppercase">Lobby & Teams</span>
+          </h1>
+          <p class="text-[11px] text-slate-400">Direct Lobby Talk + Private Team Channels</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4">
+        <!-- Self Display Tag -->
+        <div class="flex items-center gap-2 bg-slate-800/50 border border-slate-700/50 px-3 py-1.5 rounded-lg text-xs">
+          <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+          <span id="header-self-name" class="font-medium text-slate-200"></span>
+        </div>
+        <div class="flex items-center gap-2 bg-slate-800/50 border border-slate-700/50 px-3 py-1.5 rounded-lg text-xs">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="lobby-count" class="font-semibold text-emerald-400">0 connected</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Left column: Configuration / Profile / Team Management -->
+      <section class="lg:col-span-4 flex flex-col gap-6">
+        
+        <!-- Microphone & Call Controls Card -->
+        <div class="bg-slate-900 border border-slate-800/80 p-5 rounded-2xl shadow-xl space-y-4">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i> Voice Controls
+          </h2>
+          
+          <div class="bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <button id="mic-toggle-btn" class="p-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-full transition border border-rose-500/20">
+                <i data-lucide="mic-off" id="mic-icon" class="w-5 h-5"></i>
+              </button>
+              <div>
+                <p id="mic-status-txt" class="text-xs font-semibold text-rose-400">Microphone Muted</p>
+                <p class="text-[10px] text-slate-500">Enable to speak instantly</p>
+              </div>
+            </div>
+            <!-- Audio Activity Visualizer -->
+            <div class="flex items-end gap-1 h-6 w-12" id="local-visualizer">
+              <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+              <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+              <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+              <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Room Action Center -->
+        <div class="bg-slate-900 border border-slate-800/80 p-5 rounded-2xl shadow-xl flex-1 flex flex-col">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+            <i data-lucide="layers" class="w-4 h-4 text-indigo-400"></i> Navigation & Teams
+          </h2>
+          
+          <div class="space-y-4 mb-6">
+            <div class="grid grid-cols-2 gap-2">
+              <button id="tab-join" class="py-2 text-center text-xs font-semibold border-b-2 border-indigo-500 text-white">Browse / Join</button>
+              <button id="tab-create" class="py-2 text-center text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-300">Create Team</button>
+            </div>
+
+            <!-- Join / Enter Form -->
+            <div id="panel-join" class="space-y-3">
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1.5">Direct Channel or Room Name</label>
+                <div class="flex gap-2">
+                  <input type="text" id="room-id-input" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. Sales, Marketing">
+                  <button id="join-room-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">Join</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Create Form -->
+            <div id="panel-create" class="space-y-3 hidden">
+              <div>
+                <label class="block text-[11px] text-slate-400 mb-1.5">New Team Channel Name</label>
+                <div class="flex gap-2">
+                  <input type="text" id="new-team-name" class="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500" placeholder="e.g. Dev-Sync, Product-Talk">
+                  <button id="create-team-btn" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">Create</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Channel Selection and Lobby Fallback -->
+          <div class="flex-1 flex flex-col min-h-[220px]">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-xs font-medium text-slate-400 uppercase tracking-wide">Available Channels</h3>
+              <button id="lobby-switch-btn" class="text-[10px] bg-slate-800 hover:bg-slate-700 hover:text-white px-2.5 py-1 rounded border border-slate-700 text-slate-300 font-medium transition flex items-center gap-1">
+                <i data-lucide="arrow-right-left" class="w-3 h-3"></i> Back to Lobby
+              </button>
+            </div>
+            
+            <div id="teams-list" class="flex-1 overflow-y-auto space-y-2 pr-1 text-slate-400 text-sm max-h-[240px] no-scrollbar">
+              <div class="p-3 text-center text-xs text-slate-600 border border-dashed border-slate-800 rounded-xl">
+                No active custom teams. Create one above to talk privately!
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right column: Active Channel and Call Participant Grid -->
+      <section class="lg:col-span-8 flex flex-col gap-6">
+        
+        <!-- Current Channel Board -->
+        <div class="bg-slate-900 border border-slate-850 rounded-2xl shadow-2xl p-6 flex flex-col h-full min-h-[520px]">
+          
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-5 mb-6">
+            <div class="flex items-center gap-3">
+              <div class="w-12 h-12 bg-indigo-500/10 rounded-xl border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                <i data-lucide="hash" id="channel-type-icon" class="w-6 h-6"></i>
+              </div>
+              <div>
+                <div class="flex items-center gap-2">
+                  <h2 id="current-room-title" class="text-lg font-bold text-white">Public Lobby</h2>
+                  <span id="badge-mode" class="text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Active</span>
+                </div>
+                <p id="current-room-status" class="text-xs text-slate-400">You are currently in the open lobby. You can talk to anyone else directly here.</p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <button id="disconnect-btn" class="hidden bg-rose-600/10 hover:bg-rose-600 hover:text-white border border-rose-500/20 text-rose-400 text-xs font-semibold px-4 py-2.5 rounded-lg transition flex items-center gap-1.5">
+                <i data-lucide="log-out" class="w-4 h-4"></i> Leave Channel
+              </button>
+            </div>
+          </div>
+
+          <!-- Call Users / Peers Grid -->
+          <div class="flex-1 flex flex-col">
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-xs font-medium text-slate-400 uppercase tracking-wide">Speakers in this Room (<span id="participant-count">0</span>)</h3>
+              <span class="text-[10px] text-slate-500 flex items-center gap-1">
+                <i data-lucide="shield-check" class="w-3 h-3 text-emerald-500/70"></i> Mesh Audio P2P Active
+              </span>
+            </div>
+
+            <!-- Peer List Container -->
+            <div id="peers-grid" class="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 auto-rows-max overflow-y-auto max-h-[380px] pr-1">
+              <!-- Dynamic user cards will load here -->
+            </div>
+            
+            <div id="no-peers-view" class="flex-1 flex flex-col items-center justify-center text-center p-12 border border-dashed border-slate-800 rounded-2xl bg-slate-950/10">
+              <div class="bg-slate-950 p-4 rounded-full text-slate-600 mb-3 border border-slate-800">
+                <i data-lucide="mic-off" class="w-8 h-8"></i>
+              </div>
+              <p class="text-slate-300 font-medium text-sm">No other peers are in this room right now.</p>
+              <p class="text-xs text-slate-500 mt-1 max-w-sm">When other users enter this channel, direct audio pathways are automatically opened.</p>
+            </div>
+          </div>
+
+          <!-- Logging Console inside Client -->
+          <div class="mt-6 border-t border-slate-800/80 pt-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Signaling Telemetry</span>
+              <button onclick="document.getElementById('console-log-box').innerHTML = ''" class="text-[10px] text-slate-400 hover:text-white">Clear</button>
+            </div>
+            <div id="console-log-box" class="h-24 overflow-y-auto bg-slate-950 border border-slate-850 rounded-xl p-3 font-mono text-[10px] text-slate-400 space-y-1"></div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Audio elements dynamic generation zone -->
+  <div id="remote-audio-container" class="hidden"></div>
+
+  <!-- Javascript Logic -->
+  <script>
+    // System Configurations
+    const STUN_SERVERS = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ]
+    };
+
+    // Client State Variables
+    let socket;
+    let localStream = null;
+    let localStreamActive = false;
+    let currentRoom = "Lobby";
+    let myUsername = "";
+    const peerConnections = {}; // Map of key (peerSocketId) to RTCPeerConnection object
+    const peerAudios = {};      // Map of key (peerSocketId) to HTMLAudioElement
+    const peerDetails = {};     // Map of key (peerSocketId) to metadata (e.g., { name })
+
+    // Audio Visualizer Helpers
+    let audioContext = null;
+    let analyser = null;
+    let dataArray = null;
+    let animationFrameId = null;
+
+    // --- Onload Initialize ---
+    window.onload = () => {
+      lucide.createIcons();
+      document.getElementById("auth-username-input").focus();
+      setupAuthHandlers();
+    };
+
+    // --- Setup Entrance Authentication Mode ---
+    function setupAuthHandlers() {
+      const enterBtn = document.getElementById("auth-enter-btn");
+      const usernameInput = document.getElementById("auth-username-input");
+
+      const attemptLogin = () => {
+        const value = usernameInput.value.trim();
+        if (!value) {
+          alert("Please enter a username to proceed.");
+          return;
+        }
+        myUsername = value;
+        
+        // Hide entry overlay, show app
+        document.getElementById("auth-overlay").classList.add("hidden");
+        document.getElementById("app-container").classList.remove("hidden");
+        document.getElementById("header-self-name").textContent = myUsername;
+
+        writeToConsole(`User mapped as "${myUsername}". Loading voice network.`);
+        setupSocketConnection();
+        setupDomEventListeners();
+      };
+
+      enterBtn.onclick = attemptLogin;
+      usernameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") attemptLogin();
+      });
+    }
+
+    // --- Console Logger ---
+    function writeToConsole(msg) {
+      console.log(`[CLIENT-LOG] ${msg}`);
+      const logBox = document.getElementById("console-log-box");
+      if (logBox) {
+        const entry = document.createElement("div");
+        entry.className = "flex gap-2 border-b border-slate-800/20 pb-0.5";
+        entry.innerHTML = `<span class="text-indigo-400 font-bold">[${new Date().toLocaleTimeString()}]</span><span>${msg}</span>`;
+        logBox.appendChild(entry);
+        logBox.scrollTop = logBox.scrollHeight;
+      }
+    }
+
+    // --- Socket Handlers ---
+    function setupSocketConnection() {
+      // Connect explicitly to localhost:3000 to bypass cross-origin/LiveServer issues
+      const SIGNALING_SERVER_URL = window.location.origin; // Assumes backend is served from the same origin
+      writeToConsole(`Connecting to signaling server at ${SIGNALING_SERVER_URL}...`);
+      
+      socket = io(SIGNALING_SERVER_URL);
+
+      socket.on("connect", () => {
+        writeToConsole(`Connected to signaling server! Socket ID: ${socket.id}`);
+        // Notify server of display name and place user into the Lobby channel
+        socket.emit("sync-profile", { name: myUsername });
+        joinChannel("Lobby");
+      });
+
+      // Update room/team listings and lobby presence from Server
+      socket.on("state-broadcast", ({ users, rooms, lobbyCount }) => {
+        document.getElementById("lobby-count").textContent = `${lobbyCount} online`;
+        
+        // Map other user names locally
+        Object.keys(users).forEach(uId => {
+          if (uId !== socket.id) {
+            peerDetails[uId] = { name: users[uId].name };
+          }
+        });
+
+        updatePresenceView(users, rooms);
+        updateUIParticipantGrid();
+      });
+
+      // Discovered peer nodes inside current channel (triggers WebRTC P2P initiation)
+      socket.on("all-peers-in-room", (peers) => {
+        writeToConsole(`Discovered ${peers.length} active peer(s) in this channel.`);
+        peers.forEach(peer => {
+          peerDetails[peer.id] = { name: peer.name };
+          initiatePeerConnection(peer.id, true); // We are the initiator
+        });
+        updateUIParticipantGrid();
+      });
+
+      // Another peer joins the room
+      socket.on("peer-joined-room", ({ peerId, name }) => {
+        writeToConsole(`User entered channel: ${name} (${peerId})`);
+        peerDetails[peerId] = { name: name };
+        initiatePeerConnection(peerId, false); // Wait for incoming WebRTC offer
+        updateUIParticipantGrid();
+      });
+
+      // Another peer leaves the room
+      socket.on("peer-left-room", ({ peerId }) => {
+        const name = peerDetails[peerId]?.name || "Anonymous";
+        writeToConsole(`User left channel: ${name}`);
+        closePeerConnection(peerId);
+      });
+
+      // Handle WebRTC Relayed Offer
+      socket.on("receive-webrtc-offer", async ({ senderPeerId, sdp }) => {
+        writeToConsole(`Received WebRTC Offer from ${peerDetails[senderPeerId]?.name || senderPeerId}`);
+        const pc = getOrCreatePeerConnection(senderPeerId);
+        
+        try {
+          await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          
+          socket.emit("send-webrtc-answer", {
+            targetPeerId: senderPeerId,
+            sdp: answer
+          });
+          writeToConsole(`Sent WebRTC Answer response to ${peerDetails[senderPeerId]?.name || senderPeerId}`);
+        } catch (err) {
+          writeToConsole(`Error setting remote description Offer: ${err.message}`);
+        }
+      });
+
+      // Handle WebRTC Relayed Answer
+      socket.on("receive-webrtc-answer", async ({ senderPeerId, sdp }) => {
+        writeToConsole(`Received WebRTC Answer confirmation from ${peerDetails[senderPeerId]?.name || senderPeerId}`);
+        const pc = peerConnections[senderPeerId];
+        if (pc) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+          } catch (err) {
+            writeToConsole(`Error processing Answer: ${err.message}`);
+          }
+        }
+      });
+
+      // Handle incoming ICE Candidate paths
+      socket.on("receive-ice-candidate", async ({ senderPeerId, candidate }) => {
+        const pc = peerConnections[senderPeerId];
+        if (pc && candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(candidate));
+          } catch (err) {
+            // Quiet fail on network timing edge cases
+          }
+        }
+      });
+
+      socket.on("disconnect", () => {
+        writeToConsole("Disconnected from signaling server. Cleaning up calls.");
+        cleanupAllPeerConnections();
+      });
+    }
+
+    // --- WebRTC P2P Handshake Protocol ---
+    function getOrCreatePeerConnection(peerId) {
+      if (peerConnections[peerId]) return peerConnections[peerId];
+      
+      writeToConsole(`Creating new RTCPeerConnection for peer: ${peerDetails[peerId]?.name || peerId}`);
+      const pc = new RTCPeerConnection(STUN_SERVERS);
+      
+      // If microphone stream is already active locally, attach the audio tracks right away
+      if (localStream) {
+        localStream.getTracks().forEach(track => {
+          pc.addTrack(track, localStream);
+          writeToConsole(`Successfully pushed local microphone stream to ${peerDetails[peerId]?.name || peerId}`);
+        });
+      }
+
+      // Collect local ICE candidate mappings and send them over socket signaling
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("send-ice-candidate", {
+            targetPeerId: peerId,
+            candidate: event.candidate
+          });
+        }
+      };
+
+      // Play remote audio track when received from peer
+      pc.ontrack = (event) => {
+        writeToConsole(`Receiving remote audio track from ${peerDetails[peerId]?.name || peerId}`);
+        const remoteStream = event.streams[0];
+        setupRemoteAudio(peerId, remoteStream);
+      };
+
+      // Watch for actual connection transitions
+      pc.onconnectionstatechange = () => {
+        writeToConsole(`Call status with ${peerDetails[peerId]?.name || peerId}: ${pc.connectionState}`);
+        updateUIParticipantGrid(); // Update interface immediately 
+        if (pc.connectionState === "disconnected" || pc.connectionState === "failed" || pc.connectionState === "closed") {
+          closePeerConnection(peerId);
+        }
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        updateUIParticipantGrid();
+      };
+
+      peerConnections[peerId] = pc;
+      return pc;
+    }
+
+    async function initiatePeerConnection(peerId, isInitiator) {
+      const pc = getOrCreatePeerConnection(peerId);
+      
+      if (isInitiator) {
+        try {
+          writeToConsole(`Negotiating WebRTC pipeline. Generating Offer for ${peerDetails[peerId]?.name || peerId}`);
+          const offer = await pc.createOffer({
+            offerToReceiveAudio: true
+          });
+          await pc.setLocalDescription(offer);
+          
+          socket.emit("send-webrtc-offer", {
+            targetPeerId: peerId,
+            sdp: offer
+          });
+        } catch (err) {
+          writeToConsole(`Error creating Offer: ${err.message}`);
+        }
+      }
+    }
+
+    function setupRemoteAudio(peerId, stream) {
+      // Remove any existing duplicate track line
+      if (peerAudios[peerId]) {
+        peerAudios[peerId].srcObject = null;
+        peerAudios[peerId].remove();
+      }
+
+      const audioEl = document.createElement("audio");
+      audioEl.autoplay = true;
+      audioEl.srcObject = stream;
+      audioEl.id = `audio-${peerId}`;
+      document.getElementById("remote-audio-container").appendChild(audioEl);
+      peerAudios[peerId] = audioEl;
+
+      writeToConsole(`Attached remote audio to audio tag for ${peerDetails[peerId]?.name || peerId}`);
+      updateUIParticipantGrid();
+    }
+
+    function closePeerConnection(peerId) {
+      writeToConsole(`Tearing down voice pipeline for ${peerDetails[peerId]?.name || peerId}`);
+      if (peerConnections[peerId]) {
+        peerConnections[peerId].close();
+        delete peerConnections[peerId];
+      }
+      if (peerAudios[peerId]) {
+        peerAudios[peerId].srcObject = null;
+        peerAudios[peerId].remove();
+        delete peerAudios[peerId];
+      }
+      updateUIParticipantGrid();
+    }
+
+    function cleanupAllPeerConnections() {
+      Object.keys(peerConnections).forEach(peerId => closePeerConnection(peerId));
+    }
+
+    // --- DOM Interface Bindings ---
+    function setupDomEventListeners() {
+      // Microphone Mute/Unmute Toggler
+      document.getElementById("mic-toggle-btn").onclick = async () => {
+        await toggleLocalMicrophone();
+      };
+
+      // Disconnect Call & Return to Lobby
+      document.getElementById("disconnect-btn").onclick = () => {
+        joinChannel("Lobby");
+      };
+
+      // Lobby Switch Button shortcut
+      document.getElementById("lobby-switch-btn").onclick = () => {
+        joinChannel("Lobby");
+      };
+
+      // Panel Tab Switches
+      document.getElementById("tab-join").onclick = () => {
+        toggleTabs("join");
+      };
+      document.getElementById("tab-create").onclick = () => {
+        toggleTabs("create");
+      };
+
+      // Browse / Enter custom Room Button
+      document.getElementById("join-room-btn").onclick = () => {
+        const rId = document.getElementById("room-id-input").value.trim();
+        if (rId) {
+          joinChannel(rId);
+        }
+      };
+
+      // Create Custom Team Button
+      document.getElementById("create-team-btn").onclick = () => {
+        const teamName = document.getElementById("new-team-name").value.trim();
+        if (teamName) {
+          // Send request, switch channel to custom Room ID
+          const cleanId = teamName.replace(/\s+/g, '-');
+          socket.emit("cmd-create-room", { id: cleanId, name: teamName });
+          writeToConsole(`Sending creation command for channel: "${teamName}"`);
+          joinChannel(cleanId);
+        }
+      };
+    }
+
+    // --- Local Hardware Audio capture & FFT Visualizer ---
+    async function toggleLocalMicrophone() {
+      const btn = document.getElementById("mic-toggle-btn");
+      const icon = document.getElementById("mic-icon");
+      const statusTxt = document.getElementById("mic-status-txt");
+
+      if (!localStreamActive) {
+        try {
+          writeToConsole("Requesting physical microphone access...");
+          localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          localStreamActive = true;
+
+          // Adjust visual UI states
+          btn.className = "p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-full transition border border-emerald-500/20";
+          icon.setAttribute("data-lucide", "mic");
+          statusTxt.textContent = "Mic Transmitting";
+          statusTxt.className = "text-xs font-semibold text-emerald-400";
+          
+          lucide.createIcons();
+          initLocalVisualizer();
+
+          // Push active mic track to all open WebRTC connection instances and RENEGOTIATE
+          Object.keys(peerConnections).forEach(async (peerId) => {
+            const pc = peerConnections[peerId];
+            localStream.getTracks().forEach(track => {
+              pc.addTrack(track, localStream);
+              writeToConsole(`Pushed live microtrack to peer: ${peerDetails[peerId]?.name || peerId}`);
+            });
+            
+            // CRITICAL FIX: Trigger Renegotiation because we added a new track
+            try {
+              writeToConsole(`Triggering WebRTC renegotiation for new track with ${peerDetails[peerId]?.name || peerId}`);
+              const offer = await pc.createOffer({ offerToReceiveAudio: true });
+              await pc.setLocalDescription(offer);
+              socket.emit("send-webrtc-offer", { targetPeerId: peerId, sdp: pc.localDescription });
+            } catch (err) {
+              writeToConsole(`Error renegotiating connection: ${err.message}`);
+            }
+          });
+
+        } catch (err) {
+          writeToConsole(`Microphone activation error: ${err.message}`);
+          alert("Could not start audio input. Verify microphone permissions.");
+        }
+      } else {
+        // Disabling track capture
+        if (localStream) {
+          localStream.getTracks().forEach(track => track.stop());
+          localStream = null;
+        }
+        localStreamActive = false;
+
+        btn.className = "p-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-full transition border border-rose-500/20";
+        icon.setAttribute("data-lucide", "mic-off");
+        statusTxt.textContent = "Microphone Muted";
+        statusTxt.className = "text-xs font-semibold text-rose-400";
+        
+        lucide.createIcons();
+        stopLocalVisualizer();
+        writeToConsole("Local microphone muted.");
+      }
+    }
+
+    function initLocalVisualizer() {
+      if (!localStream) return;
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(localStream);
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 32;
+        source.connect(analyser);
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+        
+        animateLocalVisualizer();
+      } catch (e) {
+        writeToConsole("Local visualizer setup error: " + e.message);
+      }
+    }
+
+    function animateLocalVisualizer() {
+      if (!localStreamActive || !analyser) return;
+      animationFrameId = requestAnimationFrame(animateLocalVisualizer);
+      analyser.getByteFrequencyData(dataArray);
+      
+      const bars = document.querySelectorAll("#local-visualizer .audio-bar");
+      bars.forEach((bar, index) => {
+        const val = dataArray[index] || 10;
+        const heightPercent = Math.max(10, Math.min(100, (val / 255) * 100));
+        bar.style.height = `${heightPercent}%`;
+        
+        if (heightPercent > 35) {
+          bar.className = "audio-bar w-1 bg-emerald-400 rounded-full";
+        } else {
+          bar.className = "audio-bar w-1 bg-slate-700 rounded-full";
+        }
+      });
+    }
+
+    function stopLocalVisualizer() {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      if (audioContext) audioContext.close();
+      
+      const bars = document.querySelectorAll("#local-visualizer .audio-bar");
+      bars.forEach(bar => {
+        bar.style.height = "4px";
+        bar.className = "audio-bar w-1 bg-slate-700 rounded-full";
+      });
+    }
+
+    // --- Channel Room Joining ---
+    function joinChannel(roomId) {
+      writeToConsole(`Initiating channel change: "${currentRoom}" -> "${roomId}"`);
+      cleanupAllPeerConnections();
+      
+      currentRoom = roomId;
+      socket.emit("join-room", { roomId });
+
+      // Update Channel Title Board
+      const title = document.getElementById("current-room-title");
+      const status = document.getElementById("current-room-status");
+      const badge = document.getElementById("badge-mode");
+      const dBtn = document.getElementById("disconnect-btn");
+      const typeIcon = document.getElementById("channel-type-icon");
+
+      if (roomId === "Lobby") {
+        title.textContent = "Public Entrance Lobby";
+        status.textContent = "You are currently in the open lobby. You can directly speak to any online lobby users immediately.";
+        badge.textContent = "Lobby Mode";
+        badge.className = "text-[9px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider";
+        dBtn.classList.add("hidden");
+        typeIcon.setAttribute("data-lucide", "globe");
+      } else {
+        title.textContent = `Channel: ${roomId}`;
+        status.textContent = `Connected to private workspace channel "${roomId}". Voice pathways are locked to members of this room.`;
+        badge.textContent = "Team Active";
+        badge.className = "text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider";
+        dBtn.classList.remove("hidden");
+        typeIcon.setAttribute("data-lucide", "hash");
+      }
+
+      lucide.createIcons();
+      updateUIParticipantGrid();
+    }
+
+    // --- Render Lists and State Presence ---
+    function toggleTabs(active) {
+      const pJoin = document.getElementById("panel-join");
+      const pCreate = document.getElementById("panel-create");
+      const tJoin = document.getElementById("tab-join");
+      const tCreate = document.getElementById("tab-create");
+
+      if (active === "join") {
+        pJoin.classList.remove("hidden");
+        pCreate.classList.add("hidden");
+        tJoin.className = "py-2 text-center text-xs font-semibold border-b-2 border-indigo-500 text-white";
+        tCreate.className = "py-2 text-center text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-300";
+      } else {
+        pCreate.classList.remove("hidden");
+        pJoin.classList.add("hidden");
+        tCreate.className = "py-2 text-center text-xs font-semibold border-b-2 border-indigo-500 text-white";
+        tJoin.className = "py-2 text-center text-xs font-semibold border-b-2 border-transparent text-slate-400 hover:text-slate-300";
+      }
+    }
+
+    function updatePresenceView(usersList, roomsList) {
+      const container = document.getElementById("teams-list");
+      container.innerHTML = "";
+
+      const keys = Object.keys(roomsList).filter(id => id !== "Lobby");
+      if (keys.length === 0) {
+        container.innerHTML = `
+          <div class="p-4 text-center text-xs text-slate-600 border border-dashed border-slate-800 rounded-xl bg-slate-950/20">
+            No active team channels. Create one above to establish a private space!
+          </div>`;
+        return;
+      }
+
+      keys.forEach(roomId => {
+        const members = roomsList[roomId] || [];
+        const isCurrent = currentRoom === roomId;
+        const div = document.createElement("div");
+        div.className = `flex items-center justify-between p-3 rounded-xl border transition cursor-pointer ${
+          isCurrent 
+            ? 'bg-indigo-600/10 border-indigo-500/30' 
+            : 'bg-slate-950/50 hover:bg-slate-900 border-slate-850'
+        }`;
+        
+        div.onclick = () => { if (!isCurrent) joinChannel(roomId); };
+
+        div.innerHTML = `
+          <div class="flex items-center gap-2.5">
+            <div class="w-2.5 h-2.5 rounded-full ${isCurrent ? 'bg-emerald-400' : 'bg-slate-600'}"></div>
+            <div>
+              <p class="text-xs font-semibold text-slate-200"># ${roomId}</p>
+              <p class="text-[10px] text-slate-500">${members.length} user${members.length !== 1 ? 's' : ''} connected</p>
+            </div>
+          </div>
+          <button class="${
+            isCurrent 
+              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
+              : 'bg-indigo-600/15 hover:bg-indigo-600 hover:text-white text-indigo-400 border-indigo-500/20'
+          } border text-[10px] font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1">
+            ${isCurrent ? '<i data-lucide="check" class="w-3.5 h-3.5"></i> Active' : '<i data-lucide="arrow-right" class="w-3.5 h-3.5"></i> Switch'}
+          </button>
+        `;
+        container.appendChild(div);
+      });
+      lucide.createIcons();
+    }
+
+    function updateUIParticipantGrid() {
+      const grid = document.getElementById("peers-grid");
+      const noPeers = document.getElementById("no-peers-view");
+      grid.innerHTML = "";
+
+      // Render Self Display first
+      const selfCard = document.createElement("div");
+      selfCard.className = "bg-indigo-950/20 border border-indigo-500/25 p-4 rounded-xl flex flex-col justify-between h-28 relative shadow-lg shadow-indigo-600/5";
+      selfCard.innerHTML = `
+        <div class="flex items-start justify-between">
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center font-bold text-white text-xs border border-indigo-400">
+              ME
+            </div>
+            <div>
+              <p class="text-xs font-semibold text-white truncate max-w-[120px]">${myUsername}</p>
+              <span class="text-[9px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/25">Speaker</span>
+            </div>
+          </div>
+          <span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
+        </div>
+        <div class="flex items-center justify-between mt-auto">
+          <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Local Mic State</span>
+          <i data-lucide="${localStreamActive ? 'mic' : 'mic-off'}" class="w-4 h-4 ${localStreamActive ? 'text-emerald-400' : 'text-rose-400'}"></i>
+        </div>
+      `;
+      grid.appendChild(selfCard);
+
+      // Render Active Peer pipelines
+      const connectedPeerIds = Object.keys(peerConnections);
+      
+      connectedPeerIds.forEach(peerId => {
+        const name = peerDetails[peerId]?.name || `User-${peerId.slice(0, 5)}`;
+        const pc = peerConnections[peerId];
+        const hasTrack = !!peerAudios[peerId];
+        
+        // Use native WebRTC connection state to determine true status
+        const isConnected = pc && (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected');
+        
+        let statusText = 'Handshaking...';
+        let statusColor = 'text-amber-400';
+        let statusIcon = 'loader';
+        let dotColor = 'bg-amber-500 animate-pulse';
+
+        if (hasTrack) {
+          statusText = 'Receiving Audio';
+          statusColor = 'text-emerald-400';
+          statusIcon = 'volume-2';
+          dotColor = 'bg-emerald-500 animate-pulse';
+        } else if (isConnected) {
+          statusText = 'Connected (Muted)';
+          statusColor = 'text-sky-400';
+          statusIcon = 'mic-off';
+          dotColor = 'bg-sky-500';
+        }
+
+        const peerCard = document.createElement("div");
+        peerCard.className = "bg-slate-950/40 border border-slate-850 p-4 rounded-xl flex flex-col justify-between h-28 relative shadow-md";
+        peerCard.innerHTML = `
+          <div class="flex items-start justify-between">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center font-bold text-slate-400 text-xs border border-slate-700 uppercase">
+                ${name.slice(0, 2)}
+              </div>
+              <div>
+                <p class="text-xs font-semibold text-slate-200 truncate max-w-[120px]">${name}</p>
+                <span class="text-[9px] text-slate-400 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">Remote Member</span>
+              </div>
+            </div>
+            <span class="w-2 h-2 rounded-full ${dotColor}"></span>
+          </div>
+          <div class="flex items-center justify-between mt-auto">
+            <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">P2P Peer Line</span>
+            <span class="text-[10px] ${statusColor} font-semibold flex items-center gap-1">
+              <i data-lucide="${statusIcon}" class="w-3.5 h-3.5"></i>
+              ${statusText}
+            </span>
+          </div>
+        `;
+        grid.appendChild(peerCard);
+      });
+
+      const totalCount = connectedPeerIds.length + 1; // self included
+      document.getElementById("participant-count").textContent = totalCount;
+
+      if (totalCount > 1) {
+        noPeers.classList.add("hidden");
+        grid.classList.remove("hidden");
+      } else {
+        noPeers.classList.remove("hidden");
+      }
+
+      lucide.createIcons();
+    }
+
+  </script>
+</body>
+</html>
