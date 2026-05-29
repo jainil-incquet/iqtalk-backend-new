@@ -299,7 +299,7 @@
 
     // --- Socket Layer ---
     function setupSocketConnection() {
-      const SIGNALING_SERVER_URL = "http://localhost:3000";
+      const SIGNALING_SERVER_URL = window.location.origin; // Assuming same origin for signaling server
       writeToConsole(`Dialing signaling server at ${SIGNALING_SERVER_URL}...`);
       
       socket = io(SIGNALING_SERVER_URL);
