@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IQTalk Mesh - Individual & Group Calls</title>
+  <title>IQTalk Mesh - Walkie-Talkie & Group Rooms</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Socket.io Client -->
@@ -20,6 +20,12 @@
     .no-scrollbar {
       -ms-overflow-style: none;
       scrollbar-width: none;
+    }
+    /* Prevents text selection while holding the PTT button */
+    .ptt-btn {
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
     }
   </style>
 </head>
@@ -60,7 +66,7 @@
           <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
             IQTalk Mesh <span class="text-[10px] bg-indigo-500/10 text-indigo-400 px-2.5 py-0.5 rounded-full border border-indigo-500/20 font-semibold tracking-wider uppercase">Lobby & Teams</span>
           </h1>
-          <p class="text-[11px] text-slate-400">Direct 1-on-1 Calls & Private Group Channels</p>
+          <p class="text-[11px] text-slate-400">Walkie-Talkie Mode & Private Group Channels</p>
         </div>
       </div>
       <div class="flex items-center gap-4">
@@ -82,28 +88,43 @@
       <!-- Left column: Configuration / Profile / Team Management -->
       <section class="lg:col-span-4 flex flex-col gap-6">
         
-        <!-- Microphone & Call Controls Card -->
-        <div class="bg-slate-900 border border-slate-800/80 p-5 rounded-2xl shadow-xl space-y-4">
+        <!-- Microphone & Call Controls Card (Hidden in Lobby Mode) -->
+        <div id="voice-controls-card" class="bg-slate-900 border border-slate-800/80 p-5 rounded-2xl shadow-xl space-y-4 hidden">
           <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-            <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i> Voice Controls
+            <i data-lucide="sliders" class="w-4 h-4 text-indigo-400"></i> Team Transmitter
           </h2>
           
-          <div class="bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-              <button id="mic-toggle-btn" class="p-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-full transition border border-rose-500/20">
-                <i data-lucide="mic-off" id="mic-icon" class="w-5 h-5"></i>
-              </button>
-              <div>
-                <p id="mic-status-txt" class="text-xs font-semibold text-rose-400">Microphone Muted</p>
-                <p class="text-[10px] text-slate-500">Enable to speak instantly</p>
+          <div class="flex flex-col gap-3">
+            <!-- Hold to Talk to Team Button -->
+            <button 
+                id="team-ptt-btn"
+                onmousedown="startTeamPTT()" 
+                onmouseup="stopTeamPTT()"
+                onmouseleave="stopTeamPTT()"
+                ontouchstart="startTeamPTT(); event.preventDefault();"
+                ontouchend="stopTeamPTT(); event.preventDefault();"
+                ontouchcancel="stopTeamPTT(); event.preventDefault();"
+                class="ptt-btn w-full py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 select-none bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 shadow-lg shadow-indigo-500/10">
+                <i data-lucide="mic" class="w-4 h-4"></i> Hold to Talk to Team
+            </button>
+
+            <div class="bg-slate-950/50 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <button id="mic-toggle-btn" class="p-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-full transition border border-rose-500/20">
+                  <i data-lucide="mic-off" id="mic-icon" class="w-5 h-5"></i>
+                </button>
+                <div>
+                  <p id="mic-status-txt" class="text-xs font-semibold text-rose-400">Locked Muted</p>
+                  <p class="text-[10px] text-slate-500">Toggle for continuous open-mic</p>
+                </div>
               </div>
-            </div>
-            <!-- Audio Activity Visualizer -->
-            <div class="flex items-end gap-1 h-6 w-12" id="local-visualizer">
-              <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
-              <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
-              <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
-              <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+              <!-- Audio Activity Visualizer -->
+              <div class="flex items-end gap-1 h-6 w-12" id="local-visualizer">
+                <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+                <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+                <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+                <span class="audio-bar w-1 bg-slate-800 rounded-full h-1"></span>
+              </div>
             </div>
           </div>
         </div>
@@ -173,9 +194,9 @@
               <div>
                 <div class="flex items-center gap-2">
                   <h2 id="current-room-title" class="text-lg font-bold text-white">Public Directory</h2>
-                  <span id="badge-mode" class="text-[9px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Lobby Mode</span>
+                  <span id="badge-mode" class="text-[9px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">Walkie-Talkie Mode</span>
                 </div>
-                <p id="current-room-status" class="text-xs text-slate-400">Browse all online users. Click 'Talk' on any individual to start a private voice line.</p>
+                <p id="current-room-status" class="text-xs text-slate-400">Browse all online users. Press and hold to transmit voice to an individual.</p>
               </div>
             </div>
 
@@ -240,16 +261,20 @@
     // Client State Variables
     let socket;
     let localStream = null;
-    let localStreamActive = false;
+    let localStreamActive = false; // Controls global mic toggle lock inside Team Rooms
+    let teamPttActive = false;     // Controls active Walkie-Talkie status for the whole Team
     let currentRoom = "Lobby";
     let myUsername = "";
     
-    // Registries
-    let globalUsers = {};       // All users across the whole server
-    let roomPeers = [];         // Specific peers assigned to the current Team Room
-    const peerConnections = {}; // Active RTCPeerConnections (both 1on1 calls and group calls)
-    const peerAudios = {};      // HTMLAudioElements
-    const peerDetails = {};     // Metadata cache { name }
+    // Registries & State
+    let globalUsers = {};       
+    let roomPeers = [];         
+    const peerConnections = {}; 
+    const peerAudios = {};      
+    const peerDetails = {};     
+    
+    // PTT Specific State Trackers
+    const pttState = {};        // Map: peerId -> boolean (true if holding Walkie-Talkie button for specific peer)
 
     let audioContext = null;
     let analyser = null;
@@ -299,7 +324,7 @@
 
     // --- Socket Layer ---
     function setupSocketConnection() {
-      const SIGNALING_SERVER_URL = window.location.origin; // Assuming same origin for signaling server
+      const SIGNALING_SERVER_URL = "http://localhost:3000";
       writeToConsole(`Dialing signaling server at ${SIGNALING_SERVER_URL}...`);
       
       socket = io(SIGNALING_SERVER_URL);
@@ -308,15 +333,14 @@
         writeToConsole(`Connected! Socket ID: ${socket.id}`);
         socket.emit("sync-profile", { name: myUsername });
         joinChannel("Lobby");
-        toggleLocalMicrophone();
       });
 
       socket.on("state-broadcast", ({ users, rooms, lobbyCount }) => {
-        globalUsers = users; // Update global registry
+        globalUsers = users; 
         document.getElementById("lobby-count").textContent = `${lobbyCount} online globally`;
         
         Object.keys(users).forEach(uId => {
-          if (uId !== socket.id) peerDetails[uId] = { name: users[uId].name };
+          if (uId !== socket.id) peerDetails[uId] = { ...peerDetails[uId], name: users[uId].name };
         });
 
         updatePresenceView(users, rooms);
@@ -327,11 +351,11 @@
       socket.on("all-peers-in-room", (peers) => {
         roomPeers = peers.map(p => p.id);
         
-        // ONLY auto-connect if we are actually in a Team Channel
+        // ONLY auto-connect actively if we are in a Team Channel
         if (currentRoom !== "Lobby") {
-            writeToConsole(`Channel synchronization: Discovered ${peers.length} active peer(s).`);
+            writeToConsole(`Channel sync: Discovered ${peers.length} active peer(s).`);
             peers.forEach(peer => {
-                peerDetails[peer.id] = { name: peer.name };
+                peerDetails[peer.id] = { ...peerDetails[peer.id], name: peer.name };
                 initiatePeerConnection(peer.id, true);
             });
         }
@@ -341,7 +365,7 @@
       // New peer joins the current Team Room
       socket.on("peer-joined-room", ({ peerId, name }) => {
         if (!roomPeers.includes(peerId)) roomPeers.push(peerId);
-        peerDetails[peerId] = { name };
+        peerDetails[peerId] = { ...peerDetails[peerId], name };
         
         if (currentRoom !== "Lobby") {
             writeToConsole(`User entered channel: ${name}`);
@@ -357,10 +381,10 @@
         closePeerConnection(peerId);
       });
 
-      // Handle direct talk (Offers) from other peers
+      // Handle direct calls (Offers) from other peers
       socket.on("receive-webrtc-offer", async ({ senderPeerId, sdp }) => {
         const name = peerDetails[senderPeerId]?.name || senderPeerId;
-        writeToConsole(`Incoming call / offer received from ${name}`);
+        writeToConsole(`Incoming voice pipeline established from ${name}`);
         
         const pc = getOrCreatePeerConnection(senderPeerId);
         try {
@@ -369,7 +393,6 @@
           await pc.setLocalDescription(answer);
           
           socket.emit("send-webrtc-answer", { targetPeerId: senderPeerId, sdp: answer });
-          writeToConsole(`Call answered automatically. Sent Answer to ${name}`);
         } catch (err) {
           writeToConsole(`Error processing offer: ${err.message}`);
         }
@@ -377,8 +400,6 @@
 
       // Handle Call confirmation (Answer)
       socket.on("receive-webrtc-answer", async ({ senderPeerId, sdp }) => {
-        const name = peerDetails[senderPeerId]?.name || senderPeerId;
-        writeToConsole(`Call confirmed. Received answer from ${name}`);
         const pc = peerConnections[senderPeerId];
         if (pc) {
           try {
@@ -389,20 +410,22 @@
         }
       });
 
-      // Handle ICE Candidates / Hang-up Signals
+      // Handle ICE Candidates and Custom Real-time PTT signals (Walkie Talkie UI Update)
       socket.on("receive-ice-candidate", async ({ senderPeerId, candidate }) => {
-        // Special custom hang-up trick: If candidate object contains __close, teardown connection.
-        if (candidate && candidate.__close) {
-            writeToConsole(`Received explicit hangup signal from ${peerDetails[senderPeerId]?.name || senderPeerId}`);
-            closePeerConnection(senderPeerId);
+        
+        // PIGGYBACK TRICK: If the sender sends a __pttStatus boolean, update their UI card instantly.
+        if (candidate && candidate.__pttStatus !== undefined) {
+            peerDetails[senderPeerId] = peerDetails[senderPeerId] || {};
+            peerDetails[senderPeerId].isTalking = candidate.__pttStatus;
+            updateUIParticipantGrid();
             return;
         }
 
         const pc = peerConnections[senderPeerId];
-        if (pc && candidate) {
+        if (pc && candidate && !candidate.__pttStatus) {
           try {
             await pc.addIceCandidate(new RTCIceCandidate(candidate));
-          } catch (err) { /* trickle delay */ }
+          } catch (err) { /* trickle delay ignore */ }
         }
       });
 
@@ -419,9 +442,7 @@
       const pc = new RTCPeerConnection(STUN_SERVERS);
       
       if (localStream) {
-        localStream.getTracks().forEach(track => {
-          pc.addTrack(track, localStream);
-        });
+        addAudioTrackToPC(pc, peerId);
       }
 
       pc.onicecandidate = (event) => {
@@ -431,7 +452,6 @@
       };
 
       pc.ontrack = (event) => {
-        writeToConsole(`Receiving audio track from ${peerDetails[peerId]?.name || peerId}`);
         setupRemoteAudio(peerId, event.streams[0]);
       };
 
@@ -443,8 +463,25 @@
       };
 
       peerConnections[peerId] = pc;
-      updateUIParticipantGrid(); // Instantly update UI to show "Connecting..."
+      updateUIParticipantGrid(); 
       return pc;
+    }
+
+    // Safely clones the local track and dynamically controls if it is transmitting audio
+    function addAudioTrackToPC(pc, peerId) {
+        if (!localStream || pc.customAudioTrack) return false;
+        
+        const track = localStream.getAudioTracks()[0].clone();
+        
+        // Determine transmission rules based on environment
+        // Enabled if:
+        // 1. We are in a team channel AND (global mic toggle is on OR team PTT is held)
+        // 2. OR individual PTT for this specific peer is held
+        track.enabled = (currentRoom !== "Lobby" && (localStreamActive || teamPttActive)) || !!pttState[peerId];
+        
+        pc.addTrack(track, localStream);
+        pc.customAudioTrack = track;
+        return true; // Return true to indicate we added a new track requiring renegotiation
     }
 
     async function initiatePeerConnection(peerId, isInitiator) {
@@ -465,14 +502,12 @@
         peerAudios[peerId].srcObject = null;
         peerAudios[peerId].remove();
       }
-
       const audioEl = document.createElement("audio");
       audioEl.autoplay = true;
       audioEl.srcObject = stream;
       audioEl.id = `audio-${peerId}`;
       document.getElementById("remote-audio-container").appendChild(audioEl);
       peerAudios[peerId] = audioEl;
-
       updateUIParticipantGrid();
     }
 
@@ -493,29 +528,131 @@
       Object.keys(peerConnections).forEach(peerId => closePeerConnection(peerId));
     }
 
-    // Global toggle function used directly from HTML rendering
-    window.toggleDirectCall = async (peerId, action) => {
 
-        if(action === "stop") {
-            closePeerConnection(peerId);
-            writeToConsole(`Call with ${peerDetails[peerId]?.name || peerId} ended.`);
-            return;
-        } 
+    // --- WALKIE TALKIE (PUSH TO TALK) LOGIC FOR INDIVIDUALS ---
+    
+    // Start transmitting locally and alert the other peer UI via custom ICE signal
+    window.startPTT = async (peerId) => {
+        pttState[peerId] = true;
+        
+        if (!localStream) await initHardwareMic();
 
-        if (peerConnections[peerId]) {
-            writeToConsole(`Hanging up direct talk with ${peerDetails[peerId]?.name || peerId}`);
-            // Send our custom __close payload inside an ICE packet wrapper to alert the other side immediately
-            socket.emit("send-ice-candidate", { targetPeerId: peerId, candidate: { __close: true } });
-            closePeerConnection(peerId);
+        let pc = peerConnections[peerId];
+        let needsRenegotiation = false;
+        
+        if (!pc) {
+            // First time pressing: create PC and initiate WebRTC Offer handshake
+            pc = getOrCreatePeerConnection(peerId);
+            try {
+              const offer = await pc.createOffer({ offerToReceiveAudio: true });
+              await pc.setLocalDescription(offer);
+              socket.emit("send-webrtc-offer", { targetPeerId: peerId, sdp: offer });
+            } catch (err) { }
         } else {
-            writeToConsole(`Dialing direct talk to ${peerDetails[peerId]?.name || peerId}...`);
-            await initiatePeerConnection(peerId, true);
+            // PC exists, check if we need to add track (e.g. mic was just authorized)
+            needsRenegotiation = addAudioTrackToPC(pc, peerId);
+            if (needsRenegotiation) {
+                try {
+                  const offer = await pc.createOffer({ offerToReceiveAudio: true });
+                  await pc.setLocalDescription(offer);
+                  socket.emit("send-webrtc-offer", { targetPeerId: peerId, sdp: pc.localDescription });
+                } catch(e) {}
+            }
         }
+        
+        // Open the audio pipeline track strictly for this user
+        if (pc.customAudioTrack) {
+            pc.customAudioTrack.enabled = true;
+        }
+        
+        // Ping the other user's screen instantly that we are talking
+        socket.emit("send-ice-candidate", { targetPeerId: peerId, candidate: { __pttStatus: true } });
+        updateUIParticipantGrid();
     };
+
+    // Stop transmitting and revert to standby
+    window.stopPTT = (peerId) => {
+        pttState[peerId] = false;
+        let pc = peerConnections[peerId];
+        
+        if (pc && pc.customAudioTrack) {
+            // Cut the audio feed instantly (leaving connection open for next fast PTT press)
+            pc.customAudioTrack.enabled = (currentRoom !== "Lobby" && (localStreamActive || teamPttActive));
+        }
+
+        // Notify other user screen we stopped
+        if (!localStreamActive && !teamPttActive) {
+            socket.emit("send-ice-candidate", { targetPeerId: peerId, candidate: { __pttStatus: false } });
+        }
+        updateUIParticipantGrid();
+    };
+
+
+    // --- WALKIE TALKIE (PUSH TO TALK) LOGIC FOR WHOLE TEAM ---
+
+    window.startTeamPTT = async () => {
+        teamPttActive = true;
+        
+        if (!localStream) await initHardwareMic();
+        writeToConsole("Transmitting PTT broadcast to entire team room...");
+
+        Object.keys(peerConnections).forEach(async (peerId) => {
+            const pc = peerConnections[peerId];
+            const added = addAudioTrackToPC(pc, peerId);
+            
+            if (pc.customAudioTrack) {
+                pc.customAudioTrack.enabled = true;
+            }
+
+            // Signal other user's screens that we are speaking to them
+            socket.emit("send-ice-candidate", { targetPeerId: peerId, candidate: { __pttStatus: true } });
+
+            if (added) {
+                try {
+                  const offer = await pc.createOffer({ offerToReceiveAudio: true });
+                  await pc.setLocalDescription(offer);
+                  socket.emit("send-webrtc-offer", { targetPeerId: peerId, sdp: pc.localDescription });
+                } catch(e) {}
+            }
+        });
+
+        // Update PTT Button UI
+        const btn = document.getElementById("team-ptt-btn");
+        if (btn) {
+            btn.className = "ptt-btn w-full py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 select-none bg-emerald-500 text-white border border-emerald-400 shadow-lg shadow-emerald-500/20";
+            btn.innerHTML = `<i data-lucide="mic" class="w-4 h-4 animate-pulse"></i> Transmitting to Team...`;
+            lucide.createIcons();
+        }
+        updateUIParticipantGrid();
+    };
+
+    window.stopTeamPTT = () => {
+        teamPttActive = false;
+        writeToConsole("Walkie-Talkie transmission to team released.");
+
+        Object.keys(peerConnections).forEach(peerId => {
+            const pc = peerConnections[peerId];
+            if (pc.customAudioTrack) {
+                pc.customAudioTrack.enabled = localStreamActive || !!pttState[peerId];
+            }
+            if (!localStreamActive && !pttState[peerId]) {
+                socket.emit("send-ice-candidate", { targetPeerId: peerId, candidate: { __pttStatus: false } });
+            }
+        });
+
+        const btn = document.getElementById("team-ptt-btn");
+        if (btn) {
+            btn.className = "ptt-btn w-full py-3 rounded-xl text-sm font-bold transition flex items-center justify-center gap-2 select-none bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500 shadow-lg shadow-indigo-500/10";
+            btn.innerHTML = `<i data-lucide="mic" class="w-4 h-4"></i> Hold to Talk to Team`;
+            lucide.createIcons();
+        }
+        updateUIParticipantGrid();
+    };
+
 
     // --- DOM Interactions ---
     function setupDomEventListeners() {
-      document.getElementById("mic-toggle-btn").onclick = async () => await toggleLocalMicrophone();
+      document.getElementById("mic-toggle-btn").onclick = async () => await toggleGlobalMicrophone();
       document.getElementById("disconnect-btn").onclick = () => joinChannel("Lobby");
       document.getElementById("lobby-switch-btn").onclick = () => joinChannel("Lobby");
       document.getElementById("tab-join").onclick = () => toggleTabs("join");
@@ -536,55 +673,69 @@
       };
     }
 
-    async function toggleLocalMicrophone() {
+    async function initHardwareMic() {
+      if (localStream) return;
+      try {
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        lucide.createIcons();
+        initLocalVisualizer();
+      } catch (err) {
+        alert("Could not start audio input. Verify microphone permissions.");
+        throw err;
+      }
+    }
+
+    // Global toggle is used primarily for continuous Group Calling in Team Rooms
+    async function toggleGlobalMicrophone() {
       const btn = document.getElementById("mic-toggle-btn");
       const icon = document.getElementById("mic-icon");
       const statusTxt = document.getElementById("mic-status-txt");
 
       if (!localStreamActive) {
-        try {
-          localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          localStreamActive = true;
+        await initHardwareMic();
+        localStreamActive = true;
 
-          btn.className = "p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-full transition border border-emerald-500/20";
-          icon.setAttribute("data-lucide", "mic");
-          statusTxt.textContent = "Mic Transmitting";
-          statusTxt.className = "text-xs font-semibold text-emerald-400";
+        btn.className = "p-3 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-full transition border border-emerald-500/20";
+        icon.setAttribute("data-lucide", "mic");
+        statusTxt.textContent = "Mic Transmitting";
+        statusTxt.className = "text-xs font-semibold text-emerald-400";
+        
+        // Push and renegotiate globally for active team calls
+        Object.keys(peerConnections).forEach(async (peerId) => {
+          const pc = peerConnections[peerId];
+          const added = addAudioTrackToPC(pc, peerId);
           
-          lucide.createIcons();
-          initLocalVisualizer();
+          // Re-evaluate enablement globally
+          if (pc.customAudioTrack) {
+              pc.customAudioTrack.enabled = (currentRoom !== "Lobby" && localStreamActive) || !!teamPttActive || !!pttState[peerId];
+          }
 
-          // Push new mic track to all active connections (both 1on1 and team calls) and Renegotiate
-          Object.keys(peerConnections).forEach(async (peerId) => {
-            const pc = peerConnections[peerId];
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-            
+          if (added) {
             try {
               const offer = await pc.createOffer({ offerToReceiveAudio: true });
               await pc.setLocalDescription(offer);
               socket.emit("send-webrtc-offer", { targetPeerId: peerId, sdp: pc.localDescription });
-            } catch (err) {
-              writeToConsole(`Error renegotiating mic track: ${err.message}`);
-            }
-          });
-
-        } catch (err) {
-          alert("Could not start audio input. Verify microphone permissions.");
-        }
+            } catch (err) { }
+          }
+        });
+        
+        lucide.createIcons();
       } else {
-        if (localStream) {
-          localStream.getTracks().forEach(track => track.stop());
-          localStream = null;
-        }
         localStreamActive = false;
+        
+        // Mute all team tracks, but leave hardware stream running for fast PTT response
+        Object.keys(peerConnections).forEach(peerId => {
+            const pc = peerConnections[peerId];
+            if (pc.customAudioTrack) {
+                pc.customAudioTrack.enabled = !!teamPttActive || !!pttState[peerId]; 
+            }
+        });
 
         btn.className = "p-3 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-full transition border border-rose-500/20";
         icon.setAttribute("data-lucide", "mic-off");
         statusTxt.textContent = "Microphone Muted";
         statusTxt.className = "text-xs font-semibold text-rose-400";
-        
         lucide.createIcons();
-        stopLocalVisualizer();
       }
     }
 
@@ -602,13 +753,19 @@
     }
 
     function animateLocalVisualizer() {
-      if (!localStreamActive || !analyser) return;
+      if (!analyser) return;
       animationFrameId = requestAnimationFrame(animateLocalVisualizer);
       analyser.getByteFrequencyData(dataArray);
       
       const bars = document.querySelectorAll("#local-visualizer .audio-bar");
+      
+      // Visualizer should reflect actual transmission status.
+      // If we are transmitting via global mic (in team) OR holding any PTT button, show animation.
+      const isAnyPttActive = Object.values(pttState).some(val => val === true);
+      const isSending = (currentRoom !== "Lobby" && (localStreamActive || teamPttActive)) || isAnyPttActive;
+
       bars.forEach((bar, index) => {
-        const val = dataArray[index] || 10;
+        let val = isSending ? (dataArray[index] || 10) : 10;
         const heightPercent = Math.max(10, Math.min(100, (val / 255) * 100));
         bar.style.height = `${heightPercent}%`;
         bar.className = heightPercent > 35 ? "audio-bar w-1 bg-emerald-400 rounded-full" : "audio-bar w-1 bg-slate-700 rounded-full";
@@ -626,8 +783,8 @@
 
     // --- Channel Logic ---
     function joinChannel(roomId) {
-      cleanupAllPeerConnections(); // Purges all active 1on1 calls and team calls
-      roomPeers = [];              // Clear memory of previous room occupants
+      cleanupAllPeerConnections(); 
+      roomPeers = [];              
       
       currentRoom = roomId;
       socket.emit("join-room", { roomId });
@@ -637,21 +794,28 @@
       const badge = document.getElementById("badge-mode");
       const dBtn = document.getElementById("disconnect-btn");
       const typeIcon = document.getElementById("channel-type-icon");
+      const voiceCard = document.getElementById("voice-controls-card");
 
       if (roomId === "Lobby") {
         title.textContent = "Public Directory";
-        status.textContent = "Browse all online users. Click 'Direct Talk' on any individual to start a private voice line.";
-        badge.textContent = "Lobby Mode";
+        status.textContent = "Browse all online users. Press and hold to transmit voice to an individual.";
+        badge.textContent = "Walkie-Talkie Mode";
         badge.className = "text-[9px] bg-sky-500/10 text-sky-400 border border-sky-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider";
         dBtn.classList.add("hidden");
         typeIcon.setAttribute("data-lucide", "globe");
+        
+        // Hide global voice controls card since Walkie-Talkie has separate push-to-talk buttons
+        if (voiceCard) voiceCard.classList.add("hidden");
       } else {
         title.textContent = `Channel: ${roomId}`;
-        status.textContent = `Connected to private workspace channel "${roomId}". Automatic mesh voice is active.`;
-        badge.textContent = "Team Active";
+        status.textContent = `Connected to private workspace channel "${roomId}". Toggle your microphone to talk to the group.`;
+        badge.textContent = "Group Active";
         badge.className = "text-[9px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider";
         dBtn.classList.remove("hidden");
         typeIcon.setAttribute("data-lucide", "hash");
+        
+        // Show global voice controls card for private group team calls
+        if (voiceCard) voiceCard.classList.remove("hidden");
       }
 
       lucide.createIcons();
@@ -744,7 +908,7 @@
           <span class="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
         </div>
         <div class="flex items-center justify-between mt-auto bg-slate-900/50 p-2 rounded-lg border border-slate-800/80">
-          <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Local Mic State</span>
+          <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Group Mic Config</span>
           <i data-lucide="${localStreamActive ? 'mic' : 'mic-off'}" class="w-4 h-4 ${localStreamActive ? 'text-emerald-400' : 'text-rose-400'}"></i>
         </div>
       `;
@@ -753,10 +917,8 @@
       // 2. Identify who to render (Lobby vs Team)
       let displayUsers = [];
       if (currentRoom === "Lobby") {
-          // Show EVERYONE online globally
           displayUsers = Object.keys(globalUsers).filter(id => id !== socket?.id);
       } else {
-          // Only show people actively in this team room
           displayUsers = roomPeers;
       }
 
@@ -765,28 +927,32 @@
         const name = peerDetails[peerId]?.name || globalUsers[peerId]?.name || `User-${peerId.slice(0, 5)}`;
         const pc = peerConnections[peerId];
         const hasTrack = !!peerAudios[peerId];
-        
         const isConnected = pc && (pc.connectionState === 'connected' || pc.iceConnectionState === 'connected');
         
-        let statusText = pc ? 'Connecting...' : 'Idle';
+        const isTransmitting = !!pttState[peerId];
+        const isOtherUserTalking = !!peerDetails[peerId]?.isTalking;
+        
+        let statusText = pc ? 'Connecting...' : 'Standby';
         let statusColor = pc ? 'text-amber-400' : 'text-slate-500';
         let statusIcon = pc ? 'loader' : 'minus';
         let dotColor = pc ? 'bg-amber-500 animate-pulse' : 'bg-slate-700';
 
-        if (hasTrack) {
-          statusText = 'Receiving Audio';
-          statusColor = 'text-emerald-400';
-          statusIcon = 'volume-2';
-          dotColor = 'bg-emerald-500 animate-pulse';
-        } else if (isConnected) {
-          statusText = 'Connected (Muted)';
-          statusColor = 'text-sky-400';
-          statusIcon = 'mic-off';
-          dotColor = 'bg-sky-500';
+        if (isConnected) {
+            if (isOtherUserTalking) {
+              statusText = 'Receiving Voice...';
+              statusColor = 'text-emerald-400';
+              statusIcon = 'volume-2';
+              dotColor = 'bg-emerald-500 animate-pulse';
+            } else {
+              statusText = 'Connected (Idle)';
+              statusColor = 'text-sky-400';
+              statusIcon = 'check-circle';
+              dotColor = 'bg-sky-500';
+            }
         }
 
         const peerCard = document.createElement("div");
-        peerCard.className = `bg-slate-950/40 border p-4 rounded-xl flex flex-col justify-between h-[135px] relative shadow-md transition ${pc ? 'border-slate-700/80' : 'border-slate-850 opacity-80'}`;
+        peerCard.className = `bg-slate-950/40 border p-4 rounded-xl flex flex-col justify-between h-[145px] relative shadow-md transition ${pc ? 'border-slate-700/80' : 'border-slate-850 opacity-80'}`;
         
         peerCard.innerHTML = `
           <div class="flex items-start justify-between">
@@ -805,21 +971,31 @@
             <div class="flex items-center justify-between">
               <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Status</span>
               <span class="text-[10px] ${statusColor} font-semibold flex items-center gap-1">
-                <i data-lucide="${statusIcon}" class="w-3 h-3 ${pc && !hasTrack && !isConnected ? 'animate-spin' : ''}"></i>
+                <i data-lucide="${statusIcon}" class="w-3 h-3 ${pc && !isConnected && !isOtherUserTalking ? 'animate-spin' : ''}"></i>
                 ${statusText}
               </span>
             </div>
-            ${currentRoom === 'Lobby' ? `
-               <button onmousedown="toggleDirectCall('${peerId}')" onmouseup="toggleDirectCall('${peerId}', 'stop')" ontouchstart="toggleDirectCall('${peerId}')" ontouchend="toggleDirectCall('${peerId}', 'stop')" ontouchcancel="toggleDirectCall('${peerId}', 'stop')" class="w-full py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm ${pc ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500'}">
-                   ${pc ? '<i data-lucide="phone-off" class="w-3.5 h-3.5"></i> Release to End' : '<i data-lucide="phone" class="w-3.5 h-3.5"></i> Press Talk'}
-               </button>
-            ` : ''}
+            <button 
+                onmousedown="startPTT('${peerId}')" 
+                onmouseup="stopPTT('${peerId}')"
+                onmouseleave="stopPTT('${peerId}')"
+                ontouchstart="startPTT('${peerId}'); event.preventDefault();"
+                ontouchend="stopPTT('${peerId}'); event.preventDefault();"
+                ontouchcancel="stopPTT('${peerId}'); event.preventDefault();"
+                class="ptt-btn w-full py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm select-none ${
+                  isTransmitting 
+                  ? 'bg-emerald-500 text-white border border-emerald-400 shadow-emerald-500/50' 
+                  : 'bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500'
+                }">
+                <i data-lucide="mic" class="w-3.5 h-3.5 ${isTransmitting ? 'animate-pulse' : ''}"></i> 
+                ${isTransmitting ? 'Transmitting...' : (currentRoom === 'Lobby' ? 'Press & Hold to Talk' : 'PTT (Private)')}
+            </button>
           </div>
         `;
         grid.appendChild(peerCard);
       });
 
-      const totalCount = displayUsers.length + 1; // +1 for self
+      const totalCount = displayUsers.length + 1;
       document.getElementById("participant-count").textContent = totalCount;
 
       if (totalCount > 1) {
