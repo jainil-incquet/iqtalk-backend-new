@@ -811,7 +811,7 @@
             </div>
             ${currentRoom === 'Lobby' ? `
                <button onmousedown="toggleDirectCall('${peerId}')" onmouseup="toggleDirectCall('${peerId}', 'stop')" ontouchstart="toggleDirectCall('${peerId}')" ontouchend="toggleDirectCall('${peerId}', 'stop')" ontouchcancel="toggleDirectCall('${peerId}', 'stop')" class="w-full py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-sm ${pc ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20' : 'bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-500'}">
-                   ${pc ? '<i data-lucide="phone-off" class="w-3.5 h-3.5"></i> Release to End' : '<i data-lucide="phone" class="w-3.5 h-3.5"></i> Talk'}
+                   ${pc ? '<i data-lucide="phone-off" class="w-3.5 h-3.5"></i> Release to End' : '<i data-lucide="phone" class="w-3.5 h-3.5"></i> Press Talk'}
                </button>
             ` : ''}
           </div>
